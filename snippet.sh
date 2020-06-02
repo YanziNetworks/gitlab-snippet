@@ -35,7 +35,8 @@ USAGE
 }
 
 # Root of the gitlab API endpoint
-GITLAB_ROOT=${GITLAB_ROOT:-"https://gitlab.com/api/v4"}
+GITLAB_HOST=${GITLAB_HOST:-gitlab.com}
+GITLAB_ROOT=${GITLAB_ROOT:-}
 
 # Token for accessing the API
 GITLAB_TOKEN=${GITLAB_TOKEN:-}
@@ -47,8 +48,13 @@ GITLAB_PROJECT=${GITLAB_PROJECT:-}
 while [ $# -gt 0 ]; do
     case "$1" in
         -g | --gitlab)
-            GITLAB_ROOT=$2; shift 2;;
+            GITLAB_HOST=$2; shift 2;;
         --gitlab=*)
+            GITLAB_HOST="${1#*=}"; shift 1;;
+
+        -r | --root)
+            GITLAB_ROOT=$2; shift 2;;
+        --root=*)
             GITLAB_ROOT="${1#*=}"; shift 1;;
 
         -p | --project)
@@ -84,6 +90,8 @@ while [ $# -gt 0 ]; do
     esac
 done
 
+[ -z "$GITLAB_ROOT" ] && GITLAB_ROOT="https://${GITLAB_HOST}/api/v4"
+
 if [ "$#" = "0" ]; then
     cmd=list
 else
@@ -100,6 +108,7 @@ callcurl() {
         _path=${1:-}
         shift
     fi
+    yush_debug "Calling ${GITLAB_ROOT%/}/projects/${GITLAB_PROJECT}/snippets/${_path%/}"
     curl -sSL \
         --header "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
         "$@" \
@@ -107,6 +116,7 @@ callcurl() {
 }
 
 json_generate() {
+    _fields=
     _title=
     _description=
     _filename=
@@ -115,29 +125,29 @@ json_generate() {
     while [ $# -gt 0 ]; do
         case "$1" in
             -t | --title)
-                _title=$2; shift 2;;
+                _title=$2; _fields="t${_fields}"; shift 2;;
             --title=*)
-                _title="${1#*=}"; shift 1;;
+                _title="${1#*=}"; _fields="t${_fields}"; shift 1;;
 
             -d | --description)
-                _description=$2; shift 2;;
+                _description=$2; _fields="d${_fields}"; shift 2;;
             --description=*)
-                _description="${1#*=}"; shift 1;;
+                _description="${1#*=}"; _fields="d${_fields}"; shift 1;;
 
             -f | --filename)
-                _filename=$2; shift 2;;
+                _filename=$2; _fields="f${_fields}"; shift 2;;
             --filename=*)
-                _filename="${1#*=}"; shift 1;;
+                _filename="${1#*=}"; _fields="f${_fields}"; shift 1;;
 
             -c | --content)
-                _content=$2; shift 2;;
+                _content=$2; _fields="c${_fields}"; shift 2;;
             --content=*)
-                _content="${1#*=}"; shift 1;;
+                _content="${1#*=}"; _fields="c${_fields}"; shift 1;;
 
             -v | --visibility)
-                _visibility=$2; shift 2;;
+                _visibility=$2; _fields="v${_fields}"; shift 2;;
             --visibility=*)
-                _visibility="${1#*=}"; shift 1;;
+                _visibility="${1#*=}"; _fields="v${_fields}"; shift 1;;
 
             -h | --help)
                 usage "" 0;;
@@ -150,12 +160,23 @@ json_generate() {
                 break;;
         esac
     done
-    _json=$(mktemp)
-    printf \
-        '{"title":"%s","description":"%s","file_name":"%s","content":"%s","visibility":"%s"}' \
-        "$_title" "$_description" "$_filename" "$_content" "$_visibility" \
-            > "$_json"
-    printf %s\\n "$_json"
+    _fpath=$(mktemp)
+    _jsonpath=$(mktemp)
+    # Print fields that were set in turns to the temporary _fpath
+    printf '{\n' > $_fpath
+    printf %s\\n "$_fields" | grep -q t && printf '"title":"%s",\n' "$_title" >> $_fpath
+    printf %s\\n "$_fields" | grep -q d && printf '"description":"%s",\n' "$_description" >> $_fpath
+    printf %s\\n "$_fields" | grep -q f && printf '"file_name":"%s",\n' "$_filename" >> $_fpath
+    printf %s\\n "$_fields" | grep -q c && printf '"content":"%s",\n' "$_content" >> $_fpath
+    printf %s\\n "$_fields" | grep -q v && printf '"visibility":"%s",\n' "$_visibility" >> $_fpath
+    # Remove last , from last line of _fpath to create beginning of real JSON
+    # file at _jsonpath
+    head -n -1 $_fpath > $_jsonpath
+    tail -n 1 $_fpath | sed -E 's/,$//' >> $_jsonpath
+    # Close the JSON file and remove the temporary _fpath. We are done!
+    printf '}' >> $_jsonpath
+    rm -f "$_fpath"
+    printf %s\\n "$_jsonpath"
 }
 
 case "$cmd" in
@@ -189,10 +210,42 @@ case "$cmd" in
         ;;
     create|add)
         _json=$(json_generate "$@")
-        callcurl "" \
-            --header "Content-Type: application/json" \
-            --request POST \
-            -d @"$_json"
+        res=$(callcurl "" \
+                --header "Content-Type: application/json" \
+                --request POST \
+                -d @"$_json")
+        if printf %s\\n "$res" | grep -qE '"error"\s*:\s*"'; then
+            if printf %s\\n "$res" | yush_json | grep -q '/error_description'; then
+                yush_error "$(printf %s\\n "$res" | yush_json | grep '/error_description' | cut -d " " -f 3-)"
+            else
+                yush_error "$(printf %s\\n "$res" | yush_json | grep '/error' | cut -d " " -f 3-)"
+            fi
+            exit 1
+        else
+            printf %s\\n "$res" | yush_json | grep -E "^/id " | awk '{print $3}'
+        fi
+        rm -f "$_json"
+        ;;
+    update|change)
+        _json=$(json_generate "$@")
+        if [ "$#" = "0" ]; then
+            yush_warn "You have to specify a snippet ID"
+        else
+            res=$(callcurl "$(eval echo "\$$#")" \
+                    --header "Content-Type: application/json" \
+                    --request PUT \
+                    -d @"$_json")
+            if printf %s\\n "$res" | grep -qE '"error"\s*:\s*"'; then
+                if printf %s\\n "$res" | yush_json | grep -q '/error_description'; then
+                    yush_error "$(printf %s\\n "$res" | yush_json | grep '/error_description' | cut -d " " -f 3-)"
+                else
+                    yush_error "$(printf %s\\n "$res" | yush_json | grep '/error' | cut -d " " -f 3-)"
+                fi
+                exit 1
+            else
+                printf %s\\n "$res" | yush_json | grep -E "^/id " | awk '{print $3}'
+            fi
+        fi
         rm -f "$_json"
         ;;
 esac
