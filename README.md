@@ -141,6 +141,19 @@ snippets accessible by the token at the project on the standard out.
 This command takes the identifier of an existing snippet as an argument and will
 print out its raw content on the standard out.
 
+#### `search`
+
+This command searches for snippets matching the extended regular expressions
+passed through the options and prints their identifiers. Recognised options are:
+
++ `-t` or `--title` is the regex to match against the title of the snippet.
++ `-d` or `--description` is the regex to match against the description of the
+  snippet.
++ `-f` or `--filename` is the regex to match against the filename of the
+  snippet.
++ `-v` or `--visibility` is the regex to match against the visibility of the
+  snippet.
+
 #### `details`
 
 This command takes the identifier of an existing snippet and prints out the

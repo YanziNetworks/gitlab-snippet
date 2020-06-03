@@ -69,6 +69,7 @@ Commands:
                 specified)
   get|read      Get raw content of snippet
   details       Get JSON or parsed JSON content of snippet
+  search        Search for matching snippet
   add|create    Create new snippet
   update|change Change existing snippet
   delete|remove Delete existing snippet
@@ -196,6 +197,8 @@ case "$cmd" in
         snippet_get "$@";;
     details)
         snippet_details "$@";;
+    search)
+        snippet_search "$@";;
     create|add)
         snippet_create "$@";;
     update|change)
