@@ -2,12 +2,23 @@
 
 This script provides an implementation of the gitlab project snippets [API] in
 pure POSIX shell. The scripts requires an installation of `curl` and depends on
-the submodule [yu.sh] (but read [on](#packaging)). To operate on snippets, you
+the [submodule] [yu.sh] (but read [on](#packaging)). To operate on snippets, you
 will need an authentication [token].
 
+The script mainly targets the use from within gitlab [ci] jobs, permitting
+storage of project-wide data between runs. While [ci] provides [caching],
+caching across runners spread out to several hosts requires cloud-level storage.
+This script uses the gitlab instance for storage, at the expense of a slightly
+lesser flexible interface: you need to explicitly pinpoint the files that needs
+caching. However, the script also provides history over cached data, as snippets
+really are git repositories.
+
   [API]: https://docs.gitlab.com/ee/api/project_snippets.html
+  [submodule]: https://git-scm.com/book/en/v2/Git-Tools-Submodules
   [token]: https://docs.gitlab.com/ee/api/README.html#authentication
   [yu.sh]: https://github.com/YanziNetworks/yu.sh
+  [ci]: https://docs.gitlab.com/ee/ci/
+  [caching]: https://docs.gitlab.com/ee/ci/caching/index.html
 
 ## Examples
 
