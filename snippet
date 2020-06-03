@@ -1,0 +1,175 @@
+#!/usr/bin/env sh
+
+
+# Find yu.sh and load modules. We support several locations to ease
+# installation.
+SCRIPT_DIR=$( cd -P -- "$(dirname -- "$(command -v -- "$0")")" && pwd -P )
+### AMLG_START
+LIB_DIR=
+for _lib in lib libexec ../lib; do
+    [ -z "$LIB_DIR" ] && [ -d "$SCRIPT_DIR/$_lib" ] && LIB_DIR="$SCRIPT_DIR/$_lib"
+done
+[ -z "$LIB_DIR" ] && echo "Cannot find library directory!" >&2 && exit 1
+YUSH_DIR="$LIB_DIR/yu.sh"
+! [ -d "$YUSH_DIR" ] && echo "canno find yu.sh directory!" >&2 && exit 1
+### AMLG_END
+
+### AMLG_START ./lib/yu.sh/log.sh ./lib/yu.sh/json.sh
+# shellcheck source=./lib/yu.sh/log.sh disable=SC1091
+. "$YUSH_DIR/log.sh"
+# shellcheck source=./lib/yu.sh/json.sh disable=SC1091
+. "$YUSH_DIR/json.sh"
+### AMLG_END
+
+# Shell sanity
+set -eu
+
+### AMLG_START ./lib/*.sh
+# Source in all relevant modules. This is where most of the "stuff" will occur.
+_modules=$(find "${LIB_DIR}" -maxdepth 1 -mindepth 1 \( -name '*.sh' -a ! -name 'x-*.sh' \) -exec basename '{}' \; | sed -e 's/\.sh$//g' | tr '\n' ' ')
+for module in $_modules; do
+    module_path="${LIB_DIR}/${module}.sh"
+    if [ -f "$module_path" ]; then
+        yush_trace "Loading $module from $module_path"
+        # shellcheck disable=SC1090
+        . "$module_path"
+    fi
+done
+### AMLG_END
+
+# Print usage on stderr and exit
+usage() {
+    [ -n "$1" ] && echo "$1" >&2
+    exitcode="${2:-1}"
+    cat << USAGE >&2
+    Yet to be documented
+USAGE
+    exit "$exitcode"
+}
+
+# Root of the gitlab API endpoint
+GITLAB_HOST=${GITLAB_HOST:-gitlab.com}
+GITLAB_ROOT=${GITLAB_ROOT:-}
+
+# Token for accessing the API
+GITLAB_TOKEN=${GITLAB_TOKEN:-}
+
+# Project to access/modify snippets for
+GITLAB_PROJECT=${GITLAB_PROJECT:-}
+
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -g | --gitlab)
+            GITLAB_HOST=$2; shift 2;;
+        --gitlab=*)
+            GITLAB_HOST="${1#*=}"; shift 1;;
+
+        -r | --root)
+            GITLAB_ROOT=$2; shift 2;;
+        --root=*)
+            GITLAB_ROOT="${1#*=}"; shift 1;;
+
+        -p | --project)
+            GITLAB_PROJECT=$2; shift 2;;
+        --project=*)
+            GITLAB_PROJECT="${1#*=}"; shift 1;;
+
+        -t | --token)
+            GITLAB_TOKEN=$2; shift 2;;
+        --token=*)
+            GITLAB_TOKEN="${1#*=}"; shift 1;;
+
+        -v | --verbose)
+            # shellcheck disable=SC2034
+            YUSH_LOG_LEVEL=$2; shift 2;;
+        --verbose=*)
+            # shellcheck disable=SC2034
+            YUSH_LOG_LEVEL="${1#*=}"; shift 1;;
+
+        --non-interactive | --no-colour | --no-color)
+            # shellcheck disable=SC2034
+            YUSH_LOG_COLOUR=0; shift 1;;
+
+        -h | --help)
+            usage "" 0;;
+
+        --)
+            shift; break;;
+        -*)
+            usage "Unknown option: $1 !";;
+        *)
+            break;;
+    esac
+done
+
+abort() {
+    yush_error "$1"
+    exit 1
+}
+
+# Converts string passed as a parameter to its URL encoded representation. This
+# is heavily modified from https://stackoverflow.com/a/10660730
+_snippet_urlenc() {
+    _encoded=
+    for _pos in $(seq 1 "${#1}"); do
+        _c=$(printf %s\\n "$1" | cut -c "$_pos")
+        case "$_c" in
+            [_.~a-zA-Z0-9-]) _encoded="${_encoded}${_c}" ;;
+            # The single quote before $_c below converts $_c to its numeric
+            # value: http://pubs.opengroup.org/onlinepubs/9699919799/utilities/printf.html#tag_20_94_13
+            *)               _encoded="${_encoded}$(printf '%%%02x' "'$_c")";;
+        esac
+    done
+    printf %s\\n "$_encoded"
+}
+
+snippet_curl() {
+    _path=
+    if [ "$#" -gt "0" ]; then
+        _path=${1:-}
+        shift
+    fi
+    yush_debug "Curling ${GITLAB_ROOT%/}/projects/${GITLAB_PROJECT}/snippets/${_path%/} with $*"
+    curl -sSL \
+        --header "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
+        "$@" \
+        "${GITLAB_ROOT%/}/projects/${GITLAB_PROJECT}/snippets/${_path%/}"
+}
+
+# Ensure curl is installed
+! command -v curl >/dev/null && abort "This script requires curl installed!"
+
+# Construct a root from just the gitlab host (and port) whenever none was
+# specified. This is the default behaviour.
+[ -z "$GITLAB_ROOT" ] && GITLAB_ROOT="https://${GITLAB_HOST}/api/v4"
+
+if ! printf %s\\n "$GITLAB_PROJECT" | grep -qE '^[0-9]+$'; then
+    GITLAB_PROJECT=$(_snippet_urlenc "$GITLAB_PROJECT")
+    yush_debug "Converted non-numeric project name to URL encoded: $GITLAB_PROJECT"
+fi
+
+# The default command is to list existing snippets by ID
+if [ "$#" = "0" ]; then
+    cmd=list
+else
+    cmd=$(printf %s\\n "$1" | tr '[:upper:]' '[:lower:]')
+    shift
+fi
+
+case "$cmd" in
+    list)
+        snippet_list "$@";;
+    get|read)
+        snippet_get "$@";;
+    details)
+        snippet_details "$@";;
+    create|add)
+        snippet_create "$@";;
+    update|change)
+        snippet_update "$@";;
+    delete|remove)
+        snippet_delete "$@";;
+    *)
+        usage "Unknown command: $cmd !";;
+esac
