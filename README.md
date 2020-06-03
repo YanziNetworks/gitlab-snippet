@@ -119,25 +119,25 @@ In order to ease automation, creation and listing commands will typically print
 out the identifier of the relevant snippet(s) on the standard out, so this
 information can be used in further commands.
 
-## `list`
+#### `list`
 
 This is the default command, i.e. it is what runs when snippet is called without
 any command specification. The command prints out the identifiers of the
 snippets accessible by the token at the project on the standard out.
 
-## `get` or `read`
+#### `get` or `read`
 
 This command takes the identifier of an existing snippet as an argument and will
 print out its raw content on the standard out.
 
-## `details`
+#### `details`
 
 This command takes the identifier of an existing snippet and prints out the
 parsed JSON output of the gitlab snippet description. When passed the `--json`
 flag, the command will, instead print out the unparsed entire gitlab snippet
 description.
 
-## `create` or `add`
+#### `create` or `add`
 
 This command will create a snippet and return its identifier. On error, it will
 log the error at the `error` level. It takes a number of options, most of them
@@ -153,13 +153,13 @@ being mandatory:
 + `--content-file` is file containing the content of the snippet. One of
   `--content-file` or `--content` must be present.
 
-## `update` or `change`
+#### `update` or `change`
 
 This command takes the same options as the `create` command and, in addition,
 the identifier of an existing snippet. It will modify the snippet and return its
 identifier on success.
 
-## `delete` or `remove`
+#### `delete` or `remove`
 
 This command takes the identifier of a snippet and removes it.
 
