@@ -42,7 +42,37 @@ usage() {
     [ -n "$1" ] && echo "$1" >&2
     exitcode="${2:-1}"
     cat << USAGE >&2
-    Yet to be documented
+
+Description:
+
+  $YUSH_APPNAME provides an interface to the gitlab snippets API for automation
+
+Usage:
+  $(basename "$0") [-option arg --long-option(=)arg] (--) command ..
+
+  where all dash-led options are as follows (long options can be followed by
+  an equal sign):
+    -g | --gitlab   Host where to find the gitlab API at, default: gitlab.com
+    -r | --root     Fully qualified URL of gitlab API root, defaults to empty
+                    meaning that it will be constructed from --gitlab.
+    -t | --token    Authentication token
+    -p | --project  Full path to project or numerical project ID
+    -h | --help      Print this help and exit
+    -v | --verbose   Verbosity level
+
+Commands:
+
+  This script accepts the following commands. Consult the documentation for more
+  details: https://github.com/YanziNetworks/gitlab-snippet
+
+  list          List identifiers of accessible snippets (default when no command
+                specified)
+  get|read      Get raw content of snippet
+  details       Get JSON or parsed JSON content of snippet
+  add|create    Create new snippet
+  update|change Change existing snippet
+  delete|remove Delete existing snippet
+
 USAGE
     exit "$exitcode"
 }
@@ -130,8 +160,10 @@ snippet_curl() {
         _path=${1:-}
         shift
     fi
+    _opts="-sSL"
+    yush_loglevel_le "trace" && _opts="-vSL"
     yush_debug "Curling ${GITLAB_ROOT%/}/projects/${GITLAB_PROJECT}/snippets/${_path%/} with $*"
-    curl -sSL \
+    curl "$_opts" \
         --header "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
         "$@" \
         "${GITLAB_ROOT%/}/projects/${GITLAB_PROJECT}/snippets/${_path%/}"
